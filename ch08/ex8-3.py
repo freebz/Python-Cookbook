@@ -1,0 +1,65 @@
+# 8.3 객체의 콘텍스트 관리 프로토콜 지원
+
+from socket import socket, AF_INET, SOCK_STREAM
+
+class LazyConnection:
+    def __init__(self, address, family=AF_INET, type=SOCK_STREAM):
+        self.address = address
+        self.family = AF_INET
+        self.type = SOCK_STREAM
+        self.sock = None
+
+    def __enter__(self):
+        if self.sock is not None:
+            raise RuntimeError('Already connected')
+        self.sock = socket(self.family, self.type)
+        self.sock.connect(self.address)
+        return self.sock
+
+    def __exit__(self, exc_ty, exc_val, tb):
+        self.sock.close()
+        self.sock = None
+
+
+from functools import partial
+
+conn = LazyConnection(('www.python.org', 80))
+# 연결 종료
+with conn as s:
+    # conn.__enter__() 실행: 연결
+    s.send(b'GET /index.html HTTP/1.0\r\n')
+    s.send(b'Host: www.python.org\r\n')
+    s.send(b'\r\n')
+    resp = b''.join(iter(partial(s.recv, 8192), b''))
+    # conn.__exit() 실행: 연결 종료
+
+
+# 토론
+
+from socket import socket, AF_INET, SOCK_STREAM
+
+class LazyConnection:
+    def __init__(self, address, family=AF_INET, type=SOCK_STREAM):
+        self.address = address
+        self.family = AF_INET
+        self.type = SOCK_STREAM
+        self.connections = []
+
+    def __enter__(self):
+        sock = socket(self.family, self.type)
+        sock.connect(self.address)
+        self.connections.append(sock)
+        return sock
+
+    def __exit__(self, exc_ty, exc_val, tb):
+        self.connections.pop().close()
+
+# 사용 예제
+from functools import partial
+
+conn = LazyConnection(('www.python.org', 80))
+with conn as s1:
+    ...
+    with conn as s2:
+        ...
+        # s1과 s2는 독립적 소켓이다.
